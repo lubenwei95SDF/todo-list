@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:8000"
+
+    volumes:
+      - .:/app
+
+  cron:
+
+    build: .
+
+    command: cron -f
+
+    volumes:
+      - .:/app

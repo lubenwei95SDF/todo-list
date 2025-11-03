@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>我的待办事项</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        .task-list { list-style: none; padding: 0; }
+        .task-item { display: flex; align-items: center; margin: 0.5em 0; border-bottom: 1px solid #eee; padding-bottom: 0.5em;}
+        .task-title { margin: 0 1em; flex-grow: 1; } /* (新) flex-grow: 1 让标题占满剩余空间 */
+        .due-date { color: #888; margin-right: 1em; } /* (新) 增加一点边距 */
+
+        /* (新) 按钮样式 */
+        .btn { text-decoration: none; padding: 5px 10px; border-radius: 3px; color: white; }
+        .btn-complete { background-color: #28a745; } /* 绿色 */
+        .btn-delete { background-color: #dc3545; } /* 红色 */
+    </style>
+</head>
+<body>
+    <h1>我的 DDL 任务提醒器</h1>
+
+    <h2>添加新任务</h2>
+    <form action="/add" method="POST">
+        <label for="title">任务标题:</label>
+        <input type="text" name="title" id="title" required>
+
+        <label for="due_date">截止日期 (DDL):</label>
+        <input type="date" name="due_date" id="due_date">
+
+        <button type="submit">添加任务</button>
+    </form>
+
+    <hr>
+
+    <h2>未完成的任务</h2>
+
+    <ul class="task-list">
+        {% for task in tasks %}
+            <li class="task-item">
+                <span class="task-title">{{ task.title }}</span>
+                <span class="due-date">
+                    (DDL: {{ task.due_date if task.due_date else 'N/A' }})
+                </span>
+
+                <a href="{{ url_for('complete_task', task_id=task.id) }}" class="btn btn-complete">完成</a>
+
+                <a href="{{ url_for('delete_task', task_id=task.id) }}" class="btn btn-delete">删除</a>
+
+                </li>
+        {% endfor %}
+    </ul>
+
+</body>
+</html>
