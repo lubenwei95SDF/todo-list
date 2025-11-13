@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, date
 from flask_sqlalchemy import SQLAlchemy
-from flask import Flask, render_template, request, redirect, url_for,abort, session, flash
+from flask import Flask, render_template, request, redirect, url_for,abort, session, flash,jsonify
 from functools import wraps
 import config
 app = Flask(__name__)
@@ -88,6 +88,94 @@ def delete_task(task_id):
     db.session.commit()
 
     return redirect(url_for('index'))
+
+@app.route('/api/v2/tasks', methods = ['GET'])
+@login_required
+def get_tasks():
+    try:
+        tasks = Task.query.filter_by(is_completed=False).order_by(Task.due_date)
+        tasks_serializable = []
+        for task in tasks:
+            tasks_serializable.append({
+                'id':task.id,
+                'title': task.title,
+                'due_date': task.due_date.isoformat() if task.due_date else None,
+                'is_completed': task.is_completed
+            })
+
+        return jsonify(tasks=tasks_serializable)
+    except Exception as e:
+        return jsonify(error = str(e)), 500
+@app.route('/api/v2/tasks',methods = ['POST'])
+@login_required
+def add_task_api():
+    try:
+        data = request.get_json()
+        if not data or 'title' not in data:
+            return jsonify(error="Missing title"), 400
+
+        due_date_str = data.get('due_date')
+        due_date = None
+        if due_date_str:
+            due_date = datetime.strptime(due_date_str,'%Y-%m-%d').date()
+        new_task = Task(
+            title = data.get('title'),
+            due_date = due_date,
+            is_completed = False
+        )
+        db.session.add(new_task)
+        db.session.commit()
+        task_serializable = {
+            'id': new_task.id,
+            'title': new_task.title,
+            'due_date': new_task.due_date.isoformat() if new_task.due_date else None
+        }
+        return jsonify(task = task_serializable), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error = str(e)), 500
+@app.route('/api/v2/tasks/<int:task_id>', methods = ['DELETE'])
+@login_required
+def delete_task_api(task_id):
+    try:
+        task = Task.query.get_or_404(task_id)
+        db.session.delete(task)
+        db.session.commit()
+
+        return jsonify(message="Task deleted successfully"), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=str(e)),500
+
+@app.route('/api/v2/tasks/<int:task_id>', methods = ['PATCH'])
+@login_required
+def update_task_api(task_id):
+    try:
+        data = request.get_json()
+        task = Task.query.get_or_404(task_id)
+        if 'title' in data:
+            task.title = data.get('title')
+        if 'is_completed' in data:
+            task.is_completed = data.get('is_completed')
+        if 'due_date' in data:
+            due_date_str = data.get('due_date')
+            if due_date_str:
+                task.due_date = datetime.strptime(due_date_str,'%Y-%m-%d').date()
+            else:
+                task.due_date = None
+        db.session.commit()
+        task_serializable = {
+            'id':task.id,
+            'title':task.title,
+            'due_date': task.due_date.isoformat() if task.due_date else None,
+            'is_completed': task.is_completed
+        }
+        return jsonify(task = task_serializable), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=str(e)),500
+
 if __name__ == '__main__':
 
     app.run(debug=True)
