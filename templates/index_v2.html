@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>V2.0 待办事项 (API版)</title>
+    </head>
+<body>
+    <h1>V2.0 待办事项 (API版)</h1>
+    <form id="add-task-form">
+        <label for="title">任务标题:</label>
+        <input type="text" name="title" id="title-input" required>
+
+        <label  for="due_date">截止日期:</label>
+        <input type="date" name="due_date" id="ddl-input">
+
+        <button type="submit">添加任务(V2.0)</button>
+    </form>
+    <p id="loading-text">... 正在从 API 加载数据 ...</p>
+
+    <ul id="task-list" class="task-list">
+        </ul>
+
+    <script>
+        // “立即执行的异步函数” (IIFE)
+        (async function() {
+            
+            console.log("V2.0 脚本开始运行...");
+            function renderTask(task){
+                const taskListUl = document.getElementById('task-list');
+                const li = document.createElement('li');
+
+                li.className = 'task-item'
+                li.dataset.taskId = task.id;
+                const ddl = task.due_date? `(DDL: ${task.due_date})` : `(N/A)`;
+
+                li.innerHTML = `
+                        <span class="task-title"> ${task.title}</span>
+                        <span class ="due-date">${ddl}</span>
+
+                        <a href="#" class="btn btn-complete" data-action="complete" data-id="${task.id}">完成</a>
+                        <a href="#" class="btn btn-delete" data-action="delete" data-id="${task.id}">删除</a>
+                `;
+                taskListUl.appendChild(li)
+            }
+            try {
+                // 1. “消费”我们自己的 API
+                const response = await fetch('/api/v2/tasks');
+                console.log("Redirected Flag:", response.redirected);
+                // 2. 检查是否被 @login_required 重定向
+                if (response.redirected) {
+                    console.log("未登录，正在跳转到登录页...");
+                    window.location.href = response.url; // 跳转到 /login
+                    return; 
+                }
+
+                // 3. 检查 API 是否返回 200 OK
+                if (!response.ok) {
+                    // (【已修复】这里必须用“反引号” `...` )
+                    throw new Error(`API 请求失败，状态码: ${response.status}`);
+                }
+                
+                // 4. 把响应体解析为 JSON
+                const data = await response.json();
+
+                // 5. (目标!) 在控制台打印
+                console.log("成功从 API 获取到数据:", data.tasks);
+                
+                const loadingText = document.getElementById('loading-text');
+                loadingText.style.display = 'none'; // ““隐藏””...正在加载...
+                const taskListUL = document.getElementById('task-list');
+                taskListUL.innerHTML = '';
+                if (data.tasks.length ===0) {
+                  taskListUL.innerHTML = '<li>恭喜你，没有未完成的任务！</li>'
+                  return;
+                }
+                else{
+                for (const task of data.tasks) {
+                  renderTask(task);
+                }
+
+            }
+            } catch (error) {
+                // 6. 捕获 *所有* 错误 (网络错误, 404/500, 或 JS 错误)
+                console.error("加载任务失败:", error);
+                document.getElementById('loading-text').innerText = "加载任务失败...";
+            }
+
+
+
+
+
+            const addForm = document.getElementById('add-task-form');
+
+            addForm.addEventListener('submit', async function(event){
+                event.preventDefault();
+                console.log("表单提交");
+                const title = document.getElementById('title-input').value;
+                const ddl = document.getElementById('ddl-input').value;
+
+                const taskData = {
+                    title: title,
+                    due_date:ddl? ddl:null
+                }
+
+                try {
+                    const response = await fetch('/api/v2/tasks', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':'application/json'
+                        },
+                        body: JSON.stringify(taskData)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API提交失败,${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const newTask = result.task;
+                    renderTask(newTask);
+                    document.getElementById('title-input').value = '';
+                    document.getElementById('ddl-input').value='';
+                } catch (error) {
+                    console.error("添加任务失败", error)
+                    alert("添加任务失败"+error.message)
+                }
+            });
+
+        })();
+
+
+            const taskListUl = document.getElementById('task-list');
+            taskListUl.addEventListener('click', async function (event) {
+                const target = event.target;
+                if (target.tagName !== 'A' || !target.dataset.action) {
+                    return;
+                }
+                event.preventDefault();
+                const taskId = target.dataset.id;
+                if (target.dataset.action === 'delete') {
+                    if (!confirm("确定要删除这个任务吗？")) return;
+                    try {
+                        const response = await fetch(`/api/v2/tasks/${target.dataset.id}`,{
+                            method: 'DELETE',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                            
+                        })
+
+                        if (!response.ok) {
+                            throw new Error('API提交失败', `${response.status}`);
+                        }
+                        target.closest('li').remove();
+                        console.log("删除成功")
+                    } catch (error) {
+                        console.error("删除任务失败", error);
+                        alert("删除任务失败" + error.message);
+                    }
+                }
+                else if (target.dataset.action ==='complete') {
+                    try {
+                        const response = await fetch(`/api/v2/tasks/${target.dataset.id}`, {
+                            method: 'PATCH',
+                            headers:{
+                                'Content-Type':'application/json'
+                            },
+                            body:JSON.stringify({is_completed: true})
+                        })
+                        if (!response.ok) {
+                            throw new Error ('API提交失败', `${response.status}`);
+                        }
+                        target.closest('li').remove();
+                    } catch (error) {
+                        console.error("完成任务失败",error);
+                        alert("完成任务失败" + error.message);
+                    }
+                }
+            })        
+    </script>
+</body>
+</html>

@@ -176,6 +176,11 @@ def update_task_api(task_id):
         db.session.rollback()
         return jsonify(error=str(e)),500
 
+@app.route('/v2')
+@login_required
+def index_v2():
+
+    return render_template('index_v2.html')
 if __name__ == '__main__':
 
     app.run(debug=True)
