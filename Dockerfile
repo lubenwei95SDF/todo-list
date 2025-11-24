@@ -1,5 +1,10 @@
 From python:3.11-slim
-RUN apt-get update && apt-get install -y cron
+RUN rm -rf /etc/apt/sources.list.d/* \
+    && echo "deb https://mirrors.aliyun.com/debian/ bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list \
+    && echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list \
+    && echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list \
+    && apt-get update \
+    && apt-get install -y cron
 WORKDIR /app
 
 copy requirements.txt requirements.txt
