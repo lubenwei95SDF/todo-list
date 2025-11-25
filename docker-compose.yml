@@ -17,6 +17,8 @@ services:
 
     volumes:
       - .:/app
+    environment:
+      - TZ=Asia/Shanghai
   nginx:
     image: nginx:latest
     ports:

@@ -9,12 +9,18 @@ WORKDIR /app
 
 copy requirements.txt requirements.txt
 
+
+RUN mkdir -p /root/.pip \
+    && echo "[global]" > /root/.pip/pip.conf \
+    && echo "index-url = https://mirrors.aliyun.com/pypi/simple/" >> /root/.pip/pip.conf \
+    && echo "trusted-host = mirrors.aliyun.com" >> /root/.pip/pip.conf
+
 run pip install --no-cache-dir -r requirements.txt
 
 copy . .
 
 
-run (crontab -l 2>/dev/null; echo "0 1 * * * python /app/check_ddl.py >> /var/log/cron.log 2>&1") | crontab -
+run (crontab -l 2>/dev/null; echo "0 8 * * * /usr/local/bin/python3 /app/check_ddl.py >> /var/log/cron.log 2>&1") | crontab -
 
 run touch /var/log/cron.log
 
