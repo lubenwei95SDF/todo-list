@@ -1,10 +1,3 @@
-明白了！你是想要一份**完整的、可以直接复制粘贴的源代码**（Raw Markdown），这样你拷进文件里，格式（包括那个画图）就不会乱了。
-
-这里是**修复了 Mermaid 语法错误**后的完整版 `README.md` 源代码。
-
-**请直接点击代码块右上角的“复制”按钮，然后粘贴到你的 `README.md` 文件中。**
-
-````markdown
 # 📝 Todo List System (V3.1) - 生产级全栈容器化部署
 
 基于 Python Flask 的待办事项管理系统。本项目已从 V1.0 单体应用演进至 **V3.1 微服务架构**，实现了全链路容器化、自动化运维及 HTTPS 安全加固。
@@ -19,7 +12,8 @@ graph LR
     Nginx -- 内部网络 --> Web[Flask 后端]
     Web <--> DB[(SQLite 数据库)]
     Cron[Cron 任务容器] -- 每日检查 DDL --> Web
-````
+    
+```
 
   * **Nginx (Reverse Proxy):** 负责 SSL 卸载、静态资源转发，隐藏后端真实端口。
   * **Flask (App):** 核心 RESTful API 服务，使用 Gunicorn 生产级服务器运行。
