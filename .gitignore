@@ -10,3 +10,8 @@ test.py
 
 test_study/
 *test*.py
+
+nginx/ssl/
+*.key
+*.crt
+*.pem

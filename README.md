@@ -1,111 +1,81 @@
-# 📅 DDL 待办事项提醒器 (Task Manager)
+# 📝 Todo List System (V3.1) - 生产级全栈容器化部署
 
-这是一个基于 Python + Flask + Docker 开发的轻量级个人待办事项（Todo List）Web 应用。
+基于 Python Flask 的待办事项管理系统。本项目已从 V1.0 单体应用演进至 **V3.1 微服务架构**，实现了全链路容器化、自动化运维及 HTTPS 安全加固。
 
-本项目的核心目的是解决个人忘记任务 DDL（截止日期）的痛点。它最大的特色是集成了一个**自动化的后台脚本**，该脚本每天会定时运行，检查所有即将到期的任务，并**发送一封“每日简报”邮件**来提醒用户。
+---
 
-本项目也是一个完整的“全栈”入门实践，涵盖了从“需求分析”、“蓝图设计”到“Web 开发”、“后台脚本”最后到“**Docker 容器化部署**”的全流程。
+## 🏗️ 系统架构 (Architecture)
 
-## ✨ 核心功能
+```mermaid
+graph LR
+    User((用户)) -- HTTPS/443 --> Nginx[Nginx 网关]
+    Nginx -- 内部网络 --> Web[Flask 后端]
+    Web <--> DB[(SQLite 数据库)]
+    Cron[Cron 任务容器] -- 每日检查 DDL --> Web
+    
+```
 
-  * **[安全]** **身份认证：** 使用 `Flask Session` + `主密码` 保护整个网站，确保只有自己能访问。
-  * **[Web]** **任务管理 (CRUD)：**
-      * **创建 (Create):** 添加新任务，并可选地设置 DDL 日期。
-      * **读取 (Read):** 在首页清晰地展示所有“未完成”的任务，并按 DDL 排序。
-      * **更新 (Update):** 一键将任务标记为“已完成”。
-      * **删除 (Delete):** 彻底删除不需要的任务。
-  * **[自动化]** **每日邮件简报：**
-      * 一个独立的 `Python` 脚本 (`check_ddl.py`)。
-      * 由 `Cron` (在 Docker 中) 驱动，每天凌晨 1:00 自动运行。
-      * **智能查询：** 找出所有 7 天内（可配置）到期且未完成的任务。
-      * **汇总发送：** 将所有到期任务**汇总到一封**邮件中发送，避免邮件风暴。
-      * **简洁设计：** 采用“无状态”设计，无需“旗标”，逻辑简单且健壮。
+  * **Nginx (Reverse Proxy):** 负责 SSL 卸载、静态资源转发，隐藏后端真实端口。
+  * **Flask (App):** 核心 RESTful API 服务，使用 Gunicorn 生产级服务器运行。
+  * **Cron (Worker):** 独立容器，负责定时执行邮件提醒任务，与业务逻辑解耦。
 
-## 🔧 技术栈 (Tech Stack)
+-----
 
-本项目所使用的核心技术：
+## ✨ 核心特性
 
-  * **后端 (Backend):** `Python 3.11`, `Flask`
-  * **数据库 (Database):** `SQLite`, `Flask-SQLAlchemy` (ORM)
-  * **前端 (Frontend):** `HTML5`, `CSS3`, `Jinja2` (模板引擎)
-  * **身份认证 (Auth):** `Flask Session` (基于 Cookie)
-  * **后台任务 (Automation):** `smtplib` (邮件), `ssl` (安全连接)
-  * **Web 服务器 (WSGI):** `Gunicorn` (生产环境服务器)
-  * **部署 (DevOps):** `Docker`, `Docker Compose`
-  * **定时任务 (Scheduling):** `Cron`
+  * ✅ **RESTful API:** 标准 CRUD 接口设计。
+  * ✅ **生产级安全:** 强制 HTTPS (TLS 1.2+)，后端端口对公网封闭，仅允许 Nginx 访问。
+  * ✅ **前后端分离:** 原生 JS (Fetch API) 实现，无刷新交互体验。
+  * ✅ **DevOps:** Docker Compose 一键编排，解决环境一致性问题。
 
-## 🚀 如何运行 (本地部署)
+-----
 
-本项目已完全“**容器化**”，部署极其简单。
+## 🚀 快速开始 (Quick Start)
 
-**前提条件：** 你的电脑上必须安装 `Docker` 和 `Docker Desktop`。
+### 1\. 克隆项目
 
-1.  **克隆 (Clone) 本仓库**
+```bash
+git clone [https://github.com/yourname/todo-list.git](https://github.com/yourname/todo-list.git)
+cd todo-list
+```
 
+### 2\. 生成 SSL 证书 (必需)
 
+本项目启用 HTTPS，需在本地生成自签名证书（证书文件已被 .gitignore 忽略，需手动生成）：
 
-2.  **创建“机密”配置文件**
-    本项目使用 `config.py` 来管理密码，该文件**不**应上传到 Git。
+```bash
+mkdir -p nginx/ssl
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout nginx/ssl/nginx.key \
+    -out nginx/ssl/nginx.crt \
+    -subj "/C=CN/ST=Beijing/L=Beijing/O=Dev/CN=localhost"
+```
 
-      * 在根目录**手动**创建一个 `config.py` 文件。
-      * **复制**以下内容到 `config.py` 中，并**改成你自己的信息**：
+### 3\. 启动服务
 
-    <!-- end list -->
+```bash
+# 构建镜像并后台运行
+sudo docker-compose up -d --build
+```
 
-    ```python
-    # config.py
+访问 `https://你的服务器IP` 即可。
+*(注：因使用自签名证书，浏览器会提示不安全，请点击“继续访问”)*
 
-    # --- 1. Flask 安全配置 ---
-    # (必须设置！请随便打一串很长很乱的字符)
-    SECRET_KEY = 'a-very-long-and-random-string-12345!'
+-----
 
-    # (这是你的网站登录密码)
-    MASTER_PASSWORD = 'MySuperSecretPassword123' 
+## ❓ 故障排除 (Troubleshooting)
 
-    # --- 2. 邮件配置 (以 QQ 邮箱为例) ---
-    SMTP_SERVER = 'smtp.qq.com'
-    SMTP_PORT = 465 # SSL 端口
+### Q1: `docker-compose` 报错 `KeyError: 'ContainerConfig'`?
 
-    # 你的邮箱账号
-    EMAIL_ADDRESS = '123456@qq.com'
+**A:** 这是旧版 Compose (v1.x) 与新版 Docker 引擎的兼容性问题。
+**解决:** 不要使用 `restart`，请运行 `sudo docker rm -f todo-list_web_1` 手动清理容器，然后再次 `up -d`。
 
-    # 你的“应用专用密码”(授权码) - 不是登录密码！
-    EMAIL_PASSWORD = 'xxxxxxxxxxxxxxxx' 
+### Q2: 邮件发送时间不对？
 
-    # 接收邮件的地址 (可以和发送地址一样)
-    RECIPIENT_EMAIL = '123456@qq.com'
-    ```
+**A:** 容器默认使用 UTC 时间。本项目已通过 `tzdata` 和 `TZ` 环境变量修正为 CST (北京时间)。
 
-3.  **构建并启动 Docker 容器**
-    在项目根目录（`docker-compose.yml` 所在的目录）运行：
+### Q3: Cron 报错 `python3: not found`?
 
-    ```bash
-    # (可选) 如果你修改了 Dockerfile，或者第一次构建
-    docker-compose build
+**A:** Cron 运行环境 `$PATH` 极简。本项目已在 Crontab 中使用绝对路径 `/usr/local/bin/python3` 解决此问题。
 
-    # 启动所有服务 (web 和 cron) 在后台运行
-    docker-compose up -d
-    ```
-
-4.  **（仅限首次运行）初始化数据库**
-    应用已在运行，但数据库还是空的。我们需要“进入”容器来创建数据库表。
-
-      * **打开一个新的终端**。
-      * 运行 `docker-compose exec` 命令来进入 `web` 容器的 `flask shell`：
-        ```bash
-        docker-compose exec web flask shell
-        ```
-      * 你会看到一个 Python 提示符 `>>>`。
-      * **输入以下命令**来创建数据库表：
-        ```python
-        db.create_all()
-        ```
-      * 创建成功后，输入 `exit()` 退出 `shell`。
-
-5.  **🎉 访问你的应用！**
-
-      * 打开你的浏览器，访问： **`http://127.0.0.1:5000/`**
-      * 你会被导向到登录页面。输入你在 `config.py` 中设置的 `MASTER_PASSWORD` 即可开始使用！
-
-
-
+-----
