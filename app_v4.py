@@ -6,6 +6,8 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
+
+from flasgger import Swagger
 import config
 
 app = Flask(__name__)
@@ -17,7 +19,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-
+swagger = Swagger(app)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     public_id = db.Column(db.String(64), unique = True)
@@ -65,6 +67,30 @@ def token_required(f):
 
 @app.route('/register', methods=['POST'])
 def register():
+    """
+    用户注册接口
+    ---
+    tags:
+      - 认证 (Auth)
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              example: engineer_li
+            password:
+              type: string
+              example: password123
+    responses:
+      200:
+        description: 注册成功
+      400:
+        description: 用户名已存在
+    """
     data = request.get_json()
     if User.query.filter_by(name = data['name']).first():
         return jsonify({'message': '用户名已存在'}), 400
@@ -80,6 +106,33 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
+    """
+        用户登录接口 (获取 Token)
+        ---
+        tags:
+          - 认证 (Auth)
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: engineer_li
+                password:
+                  type: string
+                  example: password123
+        responses:
+          200:
+            description: 登录成功，返回 Token
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+    """
     auth = request.get_json()
     if not auth or not auth.get('name') or not auth.get('password'):
         return make_response('Could not verify', 401)
@@ -97,16 +150,64 @@ def login():
 @app.route('/api/tasks', methods=['GET'])
 @token_required
 def get_tasks(current_user):
+    """
+        获取我的任务列表
+        ---
+        tags:
+          - 任务 (Todo)
+        security:
+          - APIKeyHeader: []
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+        responses:
+          200:
+            description: 任务列表
+    """
     output = [task.to_json() for task in current_user.tasks]
     return jsonify(({'tasks': output}))
 
 @app.route('/api/tasks', methods=['POST'])
 @token_required
 def add_task(current_user):
+    """
+        创建新任务
+        ---
+        tags:
+          - 任务 (Todo)
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+          - in: body
+            name: body
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: 学习Swagger
+                due_date:
+                  type: string
+                  example: 2025-12-31
+        responses:
+          200:
+            description: 创建成功
+    """
     data = request.get_json()
     due_date = None
     if data.get('due_date'):
-        due_date = datetime.datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+        try:
+            # 尝试按 YYYY-MM-DD 解析
+            due_date = datetime.datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+        except ValueError:
+            # 如果格式不对，不要崩，而是温柔地告诉前端：你发错了
+            return jsonify({'message': '日期格式错误，请使用 YYYY-MM-DD (例如 2025-12-31)'}), 400
     new_task = Task(
         title = data['title'],
         due_date = due_date,
@@ -120,6 +221,31 @@ def add_task(current_user):
 @app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 @token_required
 def delete_task(current_user, task_id):
+    """
+        删除任务
+        ---
+        tags:
+          - 任务 (Todo)
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+
+          # 👇 新知识点：in: path 表示这是一个 URL 路径参数
+          - name: task_id
+            in: path
+            type: integer
+            required: true
+            description: 要删除的任务ID (例如 1)
+
+        responses:
+          200:
+            description: 删除成功
+          404:
+            description: 任务不存在或无权删除
+    """
     task = Task.query.filter_by(id = task_id, owner = current_user).first()
     if not task:
         return jsonify({'message': '任务不存在或无权删除'}), 404
