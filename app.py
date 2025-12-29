@@ -59,6 +59,9 @@ def token_required(f):
 
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms = ["HS256"])
+            jti = data.get('jti')
+            if jti and redis_client.get(jti):
+                return jsonify({'message': 'Token has been revoked (Logged out)'}),401
             current_user = User.query.filter_by(public_id = data['public_id']).first()
         except:
             return jsonify({'message': 'Token is invalid'}), 401
@@ -160,11 +163,45 @@ def login():
         return make_response('用户不存在', 401)
     if check_password_hash(user.password, auth.get('password')):
         token = jwt.encode({'public_id': user.public_id,
-                            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'], algorithm = 'HS256')
+                            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30),
+                            'jti': str(uuid.uuid4())    #给token增加一个uuid
+                            }, app.config['SECRET_KEY'], algorithm = 'HS256')
         return jsonify({'token': token})
 
     return make_response('密码错误', 401)
 
+@app.route('/logout', methods=['POST'])
+@token_required
+def logout():
+    """
+        用户注销 (加入黑名单)
+        ---
+        tags:
+          - 认证 (Auth)
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+        responses:
+          200:
+            description: 注销成功
+    """
+    auth_header = request.headers.get('Authorization')
+    token = auth_header.split(' ')[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        jti = payload.get('jti')
+        exp_timestamp = payload.get('exp')
+        now_timestamp = datetime.datetime.utcnow()
+        ttl = exp_timestamp - now_timestamp
+        if ttl > 0:
+            redis_client.set(jti, 'blacklisted', ex=int(ttl))
+
+        return jsonify({'message': "Successfully logged out. Token revoked"}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
 @app.route('/api/tasks', methods=['GET'])
 @token_required
 def get_tasks(current_user):
