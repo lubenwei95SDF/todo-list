@@ -172,7 +172,7 @@ def login():
 
 @app.route('/logout', methods=['POST'])
 @token_required
-def logout():
+def logout(current_user):
     """
         用户注销 (加入黑名单)
         ---
