@@ -9,6 +9,10 @@ services:
     volumes:
       - .:/app
 
+    environment:
+      - REDIS_HOST=redis_service
+      - REDIS_PORT=6379
+
   cron:
 
     build: .
@@ -19,6 +23,8 @@ services:
       - .:/app
     environment:
       - TZ=Asia/Shanghai
+      - REDIS_HOST=redis_service
+      - REDIS_PORT=6379
   nginx:
     image: nginx:latest
     ports:
@@ -29,3 +35,8 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl
     depends_on:
       - web
+
+
+  redis_service:
+    image: redis:alpine
+    command: redis-server --appendonly yes

@@ -1,189 +1,260 @@
 import os
-from datetime import datetime, date
-from flask_sqlalchemy import SQLAlchemy
-from flask import Flask, render_template, request, redirect, url_for,abort, session, flash,jsonify
+import jwt
+import datetime
+import uuid
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, request, jsonify, make_response
+from flask_sqlalchemy import SQLAlchemy
+
+from flasgger import Swagger
 import config
+
 app = Flask(__name__)
+
 app.config['SECRET_KEY'] = config.SECRET_KEY
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'todo.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'todo_v4.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
+
+swagger = Swagger(app)
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    public_id = db.Column(db.String(64), unique = True)
+    name = db.Column(db.String(50), unique = True)
+    password = db.Column(db.String(80))
+    tasks = db.relationship('Task', backref='owner', lazy= True)
+
+
 class Task(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key = True)
     title = db.Column(db.String(200), nullable = False)
-    due_date = db.Column(db.Date, nullable = True)
+    due_date = db.Column(db.Date, nullable = False)
     is_completed = db.Column(db.Boolean, default = False)
-    def __repr__(self):
-        return f'<Task{self.id}:{self.title}>'
-def login_required(f):
+
+    user_id = db.Column( db.Integer, db.ForeignKey('user.id'), nullable = False)
+
+    def to_json(self):
+
+        return{
+            'id': self.id,
+            'title': self.title,
+            'due_date': self.due_date.isoformat() if self.due_date else None,
+            'is_completed': self.is_completed
+        }
+
+def token_required(f):
     @wraps(f)
-    def decorated_function(*arges, **kwargs):
-        if 'logged_in' not in session:
-            flash('请先登录','danger')
-            return redirect(url_for('login'))
-        return f(*arges, **kwargs)
-    return decorated_function
-@app.route('/login', methods = ['GET', 'POST'])
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer'):
+                token = auth_header.split(' ')[1]
+        if not token:
+            return jsonify({'message': 'Token is missing'}), 401
+
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms = ["HS256"])
+            current_user = User.query.filter_by(public_id = data['public_id']).first()
+        except:
+            return jsonify({'message': 'Token is invalid'}), 401
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    """
+    用户注册接口
+    ---
+    tags:
+      - 认证 (Auth)
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              example: engineer_li
+            password:
+              type: string
+              example: password123
+    responses:
+      200:
+        description: 注册成功
+      400:
+        description: 用户名已存在
+    """
+    data = request.get_json()
+    if User.query.filter_by(name = data['name']).first():
+        return jsonify({'message': '用户名已存在'}), 400
+    hashed_pw = generate_password_hash(data['password'], method='pbkdf2:sha256')
+    new_user = User(
+        public_id = str(uuid.uuid4()),
+        name = data['name'],
+        password = hashed_pw,
+    )
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({'message': '注册成功'})
+
+@app.route('/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        password_attempt = request.form.get('password')
-        if password_attempt == config.MASTER_PASSWORD:
-            session['logged_in'] = True
-            flash('登录成功' ,'success')
-            return redirect(url_for('index'))
-        else:
-            flash('密码错误','danger')
+    """
+        用户登录接口 (获取 Token)
+        ---
+        tags:
+          - 认证 (Auth)
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: engineer_li
+                password:
+                  type: string
+                  example: password123
+        responses:
+          200:
+            description: 登录成功，返回 Token
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+    """
+    auth = request.get_json()
+    if not auth or not auth.get('name') or not auth.get('password'):
+        return make_response('Could not verify', 401)
+    user = User.query.filter_by(name = auth.get('name')).first()
 
-            return redirect(url_for('login'))
-    return render_template('login.html')
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    flash('你已成功登出','info')
+    if not user:
+        return make_response('用户不存在', 401)
+    if check_password_hash(user.password, auth.get('password')):
+        token = jwt.encode({'public_id': user.public_id,
+                            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'], algorithm = 'HS256')
+        return jsonify({'token': token})
 
-    return redirect(url_for('login'))
-@app.route('/',methods=['GET'])
-@login_required
-def index():
+    return make_response('密码错误', 401)
 
-    tasks = Task.query.filter_by(is_completed = False).order_by(Task.due_date)
+@app.route('/api/tasks', methods=['GET'])
+@token_required
+def get_tasks(current_user):
+    """
+        获取我的任务列表
+        ---
+        tags:
+          - 任务 (Todo)
+        security:
+          - APIKeyHeader: []
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+        responses:
+          200:
+            description: 任务列表
+    """
+    output = [task.to_json() for task in current_user.tasks]
+    return jsonify(({'tasks': output}))
 
-    return render_template('index.html',tasks = tasks)
-
-@app.route('/add',methods=['POST'])
-def add_task():
-
-    title = request.form.get('title')
-    due_date_str = request.form.get('due_date')
-
+@app.route('/api/tasks', methods=['POST'])
+@token_required
+def add_task(current_user):
+    """
+        创建新任务
+        ---
+        tags:
+          - 任务 (Todo)
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
+          - in: body
+            name: body
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: 学习Swagger
+                due_date:
+                  type: string
+                  example: 2025-12-31
+        responses:
+          200:
+            description: 创建成功
+    """
+    data = request.get_json()
     due_date = None
-    if due_date_str:
-        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+    if data.get('due_date'):
+        try:
+            # 尝试按 YYYY-MM-DD 解析
+            due_date = datetime.datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+        except ValueError:
+            # 如果格式不对，不要崩，而是温柔地告诉前端：你发错了
+            return jsonify({'message': '日期格式错误，请使用 YYYY-MM-DD (例如 2025-12-31)'}), 400
     new_task = Task(
-        title = title,
+        title = data['title'],
         due_date = due_date,
-        is_completed = False
-)
+        is_completed = False,
+        owner = current_user
+    )
     db.session.add(new_task)
     db.session.commit()
-    return redirect(url_for('index'))
-@app.route('/complete/<int:task_id>')
-@login_required
-def complete_task(task_id):
-    task = Task.query.get_or_404(task_id)
+    return jsonify({'message':'任务创建成功', 'task': new_task.to_json()})
 
-    task.is_completed = True
+@app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+@token_required
+def delete_task(current_user, task_id):
+    """
+        删除任务
+        ---
+        tags:
+          - 任务 (Todo)
+        parameters:
+          - name: Authorization
+            in: header
+            type: string
+            required: true
+            description: Bearer <你的Token>
 
-    db.session.commit()
-    return redirect(url_for('index'))
-@app.route('/delete/<int:task_id>')
-@login_required
-def delete_task(task_id):
-    task = Task.query.get_or_404(task_id)
+          # 👇 新知识点：in: path 表示这是一个 URL 路径参数
+          - name: task_id
+            in: path
+            type: integer
+            required: true
+            description: 要删除的任务ID (例如 1)
 
+        responses:
+          200:
+            description: 删除成功
+          404:
+            description: 任务不存在或无权删除
+    """
+    task = Task.query.filter_by(id = task_id, owner = current_user).first()
+    if not task:
+        return jsonify({'message': '任务不存在或无权删除'}), 404
     db.session.delete(task)
-
     db.session.commit()
+    return jsonify({'message': '已删除'})
 
-    return redirect(url_for('index'))
-
-@app.route('/api/v2/tasks', methods = ['GET'])
-@login_required
-def get_tasks():
-    try:
-        tasks = Task.query.filter_by(is_completed=False).order_by(Task.due_date)
-        tasks_serializable = []
-        for task in tasks:
-            tasks_serializable.append({
-                'id':task.id,
-                'title': task.title,
-                'due_date': task.due_date.isoformat() if task.due_date else None,
-                'is_completed': task.is_completed
-            })
-
-        return jsonify(tasks=tasks_serializable)
-    except Exception as e:
-        return jsonify(error = str(e)), 500
-@app.route('/api/v2/tasks',methods = ['POST'])
-@login_required
-def add_task_api():
-    try:
-        data = request.get_json()
-        if not data or 'title' not in data:
-            return jsonify(error="Missing title"), 400
-
-        due_date_str = data.get('due_date')
-        due_date = None
-        if due_date_str:
-            due_date = datetime.strptime(due_date_str,'%Y-%m-%d').date()
-        new_task = Task(
-            title = data.get('title'),
-            due_date = due_date,
-            is_completed = False
-        )
-        db.session.add(new_task)
-        db.session.commit()
-        task_serializable = {
-            'id': new_task.id,
-            'title': new_task.title,
-            'due_date': new_task.due_date.isoformat() if new_task.due_date else None
-        }
-        return jsonify(task = task_serializable), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(error = str(e)), 500
-@app.route('/api/v2/tasks/<int:task_id>', methods = ['DELETE'])
-@login_required
-def delete_task_api(task_id):
-    try:
-        task = Task.query.get_or_404(task_id)
-        db.session.delete(task)
-        db.session.commit()
-
-        return jsonify(message="Task deleted successfully"), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(error=str(e)),500
-
-@app.route('/api/v2/tasks/<int:task_id>', methods = ['PATCH'])
-@login_required
-def update_task_api(task_id):
-    try:
-        data = request.get_json()
-        task = Task.query.get_or_404(task_id)
-        if 'title' in data:
-            task.title = data.get('title')
-        if 'is_completed' in data:
-            task.is_completed = data.get('is_completed')
-        if 'due_date' in data:
-            due_date_str = data.get('due_date')
-            if due_date_str:
-                task.due_date = datetime.strptime(due_date_str,'%Y-%m-%d').date()
-            else:
-                task.due_date = None
-        db.session.commit()
-        task_serializable = {
-            'id':task.id,
-            'title':task.title,
-            'due_date': task.due_date.isoformat() if task.due_date else None,
-            'is_completed': task.is_completed
-        }
-        return jsonify(task = task_serializable), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(error=str(e)),500
-
-@app.route('/v2')
-@login_required
-def index_v2():
-
-    return render_template('index_v2.html')
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
 
-    app.run(debug=True)
-
-
-
+    app.run(debug=True, port = 5000)
