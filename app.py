@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 
+from extensions import redis_client
 from flasgger import Swagger
 import config
 
@@ -64,6 +65,23 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
+
+@app.route('/test_redis')
+def test_redis_connection():
+    try:
+        redis_client.set('test_key', 'working', ex=60)
+
+        value = redis_client.get('test_key')
+
+        return {
+            "status": "success",
+            "redis_reply": value
+        }, 200
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }, 500
 
 @app.route('/register', methods=['POST'])
 def register():
