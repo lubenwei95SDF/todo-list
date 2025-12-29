@@ -194,7 +194,7 @@ def logout(current_user):
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         jti = payload.get('jti')
         exp_timestamp = payload.get('exp')
-        now_timestamp = datetime.datetime.utcnow()
+        now_timestamp = datetime.datetime.utcnow().timestamp()
         ttl = exp_timestamp - now_timestamp
         if ttl > 0:
             redis_client.set(jti, 'blacklisted', ex=int(ttl))
