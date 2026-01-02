@@ -2,15 +2,31 @@ import pika
 import json
 import time
 import os
-
+import sys
 RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
 credentials = pika.PlainCredentials('admin', 'secret')
 
 def connect_mq():
-    """建立到 RABBITMQ的连接"""
-    return pika.BlockingConnection(
-        pika.ConnectionParameters(host=RABBITMQ_HOST, credentials= credentials)
-    )
+    """
+        带重试机制的连接函数
+        就像网卡驱动：如果硬件没响应，就轮询等待，而不是直接蓝屏。
+        """
+    retry_count = 0
+    while True:
+        try:
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
+            )
+            print("✅ [Worker] 成功连接到 RabbitMQ!")
+            return connection
+        except pika.exceptions.AMQPConnectionError as e:
+            retry_count += 1
+            print(f"⏳ [Worker] 连接 RabbitMQ 失败 (第 {retry_count} 次尝试). 等待 5 秒...")
+            time.sleep(5)
+        except Exception as e:
+            # 如果是其他严重错误（比如解析不了 host），则打印并退出
+            print(f"❌ [Worker] 发生严重错误: {e}")
+            sys.exit(1)
 
 def send_email_simulation(user_name):
     """
