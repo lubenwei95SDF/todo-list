@@ -10,7 +10,8 @@ from flask_sqlalchemy import SQLAlchemy
 from extensions import redis_client
 from flasgger import Swagger
 import config
-
+import json
+import pika
 app = Flask(__name__)
 
 app.config['SECRET_KEY'] = config.SECRET_KEY
@@ -123,6 +124,29 @@ def register():
     )
     db.session.add(new_user)
     db.session.commit()
+
+    #-------v7 A-TRack-------------
+    try:
+        mq_host = os.getenv('RABBITMQ_HOST', 'localhost')
+        credentials = pika.PlainCredentials('admin', 'secret')
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host = mq_host, credentials = credentials)
+        )
+        channel = connection.channel()
+        channel.queue_declare(queue='email_queue', durable=True)
+        message = {'name': data['name'], 'email_type': 'welcome'}
+        channel.basic_publish(
+            exchange='',
+            routing_key='email_queue',
+            body = json.dumps(message),
+            properties=pika.BasicProperties(
+                delivery_mode = 2,
+            )
+        )
+        connection.close()
+        print(f"📤 [Producer] 已向队列投递任务: {data['name']}")
+    except Exception as e:
+        print(f"❌ [Producer] MQ 连接失败: {e}")
     return jsonify({'message': '注册成功'})
 
 @app.route('/login', methods=['POST'])

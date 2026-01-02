@@ -7,3 +7,4 @@ Requests==2.32.5
 Werkzeug==3.1.4
 gunicorn
 redis>=5.0.0
+pika

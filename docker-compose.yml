@@ -12,6 +12,10 @@ services:
     environment:
       - REDIS_HOST=redis_service
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq_service
+    depends_on:
+      - redis_service
+      - rabbitmq_service
 
   cron:
 
@@ -40,3 +44,12 @@ services:
   redis_service:
     image: redis:alpine
     command: redis-server --appendonly yes
+  rabbitmq_service:
+    image: rabbitmq:3-management
+    container_name: rabbitmq_container
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: secret
