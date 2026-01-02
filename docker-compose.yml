@@ -13,6 +13,7 @@ services:
       - REDIS_HOST=redis_service
       - REDIS_PORT=6379
       - RABBITMQ_HOST=rabbitmq_service
+      - PYTHONUNBUFFERED=1
     depends_on:
       - redis_service
       - rabbitmq_service
@@ -61,5 +62,6 @@ services:
       - .:/app
     environment:
       - RABBITMQ_HOST=rabbitmq_service
+      - PYTHONUNBUFFERED=1
     depends_on:
       - rabbitmq_service
